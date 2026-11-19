@@ -1,35 +1,181 @@
 # zh-report-humanizer
 
-一个用于 [Claude Code](https://claude.com/claude-code) / Claude Agent Skills 的技能包，帮助撰写或修改**中文技术 / 学术报告**（课程作业、实验报告、分析报告、课程设计）时去掉"AI 味"，覆盖正文和图表。
+一个用于 [Claude Code](https://claude.com/claude-code) / Claude Agent Skills 的技能包，帮助撰写或修改**中文技术 / 学术报告**（课程作业、实验报告、分析报告、课程设计）时去掉"AI 味"，覆盖正文和图表，并附带一个可以单独运行的自检脚本。
 
-核心主张：**报告里的人味来自具体性和真实过程，不来自文风。** 因此它同时反对两类错误改法：
+A Claude skill for de-AI-ifying Chinese technical/academic reports. It favors concrete details (numbers, filenames, commands, error output) and the real troubleshooting process over stylistic tricks, and ships with a dependency-free Python self-check script.
 
-- **AI 腔**：「综上所述」「赋能」「高效、稳定、可靠」三连排比、意义拔高。
-- **刻意风格化**：加金句、制造节奏、硬塞口语词、同义词轮换骗检测器。
+## 核心主张
 
-A Claude skill for de-AI-ifying Chinese technical/academic reports. It favors concrete details (numbers, filenames, commands, error output) and real troubleshooting process over stylistic tricks, and ships with a Python self-check script.
+这个技能的判断依据是：报告读起来像人写的，主要取决于内容是否具体、是否写出了真实过程，和用词、句式关系不大。这里的内容指两点：
 
-## 内容
+1. **具体性**：数字、文件名、命令、报错原文。
+2. **真实过程**：遇到的问题、当时的误判、怎么排查出来的。
+
+这两点做到了，语言保持平实即可，不需要再修饰。因此这个技能同时反对两个方向的改法：
+
+| 方向 | 典型写法 | 问题 |
+|---|---|---|
+| AI 腔（没改） | 「随着…的不断发展」「赋能」「高效、稳定、可靠」 | 套话和排比掩盖了内容的空洞 |
+| 刻意风格化（改过头） | 「这个坑比前两个值钱」「很慢。」「说实话」 | 文风表演，换了一种 AI 味，学生报告不这么写 |
+
+很多"去 AI 味"提示词会把文本往第二个方向推：加口语、加金句、故意长短句交替。这个技能明确禁止这样做。
+
+## 效果示例
+
+下面是同一份实验报告改写前后的对比。完整文件在 [examples/before.md](examples/before.md) 和 [examples/after.md](examples/after.md)，可以自己跑脚本复现。
+
+### 例 1：开头
+
+改前：
+
+> 随着开源软件的不断发展，许可证合规已成为软件工程中不可忽视的重要环节。本实验旨在借助 ScanCode 工具，对 Apache Commons-IO 项目进行全方位的许可证扫描，从而打造一套高效、稳定、可靠的合规检测流程。
+
+改后：
+
+> 用 ScanCode Toolkit 扫描 Apache Commons-IO 仓库，统计各文件的许可证和版权声明，并和 `pom.xml` 里声明的许可证对照。
+
+删掉的是套话开头（「随着…的不断发展」）、铁证级词汇（「全方位」「打造」）和三连排比（「高效、稳定、可靠」）。改后的句子说清了用什么工具、扫什么、和什么对照。
+
+### 例 2：把"遇到了一些问题"写成真实过程
+
+改前：
+
+> 在安装过程中遇到了一些网络相关的问题，这不是工具本身的问题，而是网络环境导致的，通过调整配置最终成功完成安装。
+
+改后：
+
+> 安装 ScanCode 时反复失败，原因是网络在传输大文件时不稳定，换成有线网络后才装上。排查过程如下。
+>
+> 执行 `pip install scancode-toolkit` 时连续 5 次失败，报错为 `SSLError(...)`。
+>
+> 我最初认为是下载源的问题，于是改用清华 TUNA 镜像。改用后 SSL 握手正常，但主文件下载到约 34 MB 时出现 `ReadTimeoutError`。把超时改为 60 秒、重试改为 10 次后，仍然在同一位置失败，所以问题出在网络传输大文件时不稳定。换成有线网络后安装成功。
+
+改前那句同时犯了两条：「这不是…，而是…」是硬规则一禁止的否定再肯定句式；整句话没有一个可以核对的细节。改后第一句先交代结果和原因，只关心"装上没有、为什么慢"的读者读到这里就够了；后面再按"现象、当时的想法、怎么排查、结论"的顺序展开，每一步都有命令、报错或数字。
+
+**这一类改写需要你提供真实材料。** 技能会要求 Claude 向你要报错原文和排查经过，没踩过的坑不会替你编。
+
+### 例 3：结果与结论
+
+改前：
+
+> 工具对绝大多数文件成功识别了许可证，检测覆盖率较高，充分体现了 ScanCode 的强大能力。
+>
+> 综上所述，通过本次实验，我深刻认识到许可证合规的重要意义。尽管当前工具仍面临一些挑战，但未来有望在更多场景中发挥作用。
+
+改后：
+
+> 本次扫描的覆盖率较高，源码文件全部检出了许可证，没有检出的都是非源码文件。共扫描 698 个文件，628 个检出许可证。其中 571 个 Java 源文件全部是 apache-2.0，与 `pom.xml` 中的声明一致；未检出的 70 个文件中，`.bin` 35 个、`.txt` 21 个、`.zip` 6 个，其余是图片。
+>
+> 这个结论有两个限制。第一，ScanCode 只扫描仓库里实际存在的文件，不解析 Maven 依赖树，所以只能说明仓库自身没有声明冲突。第二，工具给出的是检测结果，许可证之间的兼容性还需要人工判断。
+
+改前的「较高」「绝大多数」没有数字支撑，和"很多"一样空。改后段首仍然保留「覆盖率较高」作为概括，读者先拿到结论，再用后面的数字核对。**数字用来支撑结论，不能代替结论**，只堆数据会让读者自己去归纳，读起来很累。概括句要给出能被数据核对的判断，「效果良好」「表现出色」这类评价不算。「…体现了…」这类句尾评价删掉，用证据代替。万能挑战段（「尽管…面临挑战…未来有望…」）换成两个具体、可验证的限制。
+
+### 例 4：改过头也是问题
+
+下面左列是常见的"去 AI 味"产物，读起来像公众号推文。技能会把它们改回平实写法。
+
+| 刻意风格化（不要写） | 平实写法 |
+|---|---|
+| 这个坑比前两个值钱 | 这个问题的影响比前两个大 |
+| 麻烦的地方在于退出码是 0 | 这次扫描的退出码是 0 |
+| 结论的适用范围比看上去窄 | 这个结论有两个限制 |
+| 真正耗时间的是第一步。很慢。 | 整个过程用时 123.97 秒，其中扫描本身占 120.03 秒。 |
+
+### 例 5：图
+
+改前，AI 常见画法：胶囊形和圆角节点、彩色填充、emoji，图题是评价。
+
+````text
+```mermaid
+flowchart LR
+  A([🚀 开始扫描]) --> B(📂 读取文件)
+  B --> C(🔍 识别许可证)
+  style A fill:#4f46e5,color:#fff
+```
+图 1 智能高效的扫描流程
+````
+
+改后：黑白直角预设，图题是描述性短语，正文先引用再出图。
+
+````text
+处理流程如图 2-1 所示，先读取文件，再识别许可证，然后提取版权声明，最后输出 JSON。
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#ffffff', 'primaryBorderColor': '#000000',
+  'primaryTextColor': '#000000', 'lineColor': '#000000'},
+  'flowchart': {'curve': 'linear'}}}%%
+flowchart LR
+  A[读取文件] --> B[识别许可证]
+  B --> C[提取版权声明]
+  C --> D[输出 JSON]
+```
+图 2-1 ScanCode 扫描流程
+````
+
+PlantUML、Graphviz、matplotlib、draw.io 的黑白预设见 [references/figures-zh.md](references/figures-zh.md)。
+
+### 自检脚本对比
+
+对上面两份文件运行 `python scripts/check_report.py`，汇总结果如下：
+
+| 检查项 | before.md | after.md |
+|---|---:|---:|
+| 硬规则一：否定再肯定 | 1 | 0 |
+| 硬规则二：箭头串流程 | 1 | 0 |
+| 硬规则三：破折号 | 1 | 0 |
+| 硬规则四：emoji | 3 | 0 |
+| 级别一铁证词（打造、全方位） | 2 | 0 |
+| 级别二可疑词（值得注意的是、综上所述） | 2 | 0 |
+| 套话短语 | 2 | 0 |
+| 句法层特征（体现了） | 1 | 0 |
+| 图表与画图代码问题 | 3 | 0 |
+| 可能性表述（可以、有望） | 2 | 0 |
+| **退出码** | **1** | **0** |
+
+before.md 的部分输出：
+
+```text
+--- 否定再肯定（硬规则一，目标 0）: 1 处 ---
+    L13   删掉一半：只留否定，或只留肯定
+          在安装过程中遇到了一些网络相关的问题，这不是工具本身的问题，而是网络环境导致的，…
+
+--- 图表与画图代码（见 references/figures-zh.md）: 3 处 ---
+    L19   Mermaid style/classDef 里有彩色 `#4f46e5`
+    L19   Mermaid 没有 init 配置，默认主题是彩色的；用 references/figures-zh.md 里的黑白预设
+    L19   Mermaid 流程图里有 `id(…)` 圆角或 `id([…])` 胶囊形节点；普通步骤用 `id[文字]` 直角矩形
+
+========================================================================
+硬规则命中: 6（目标 0）    其他命中: 10（目标：级别一 = 0，其余尽量 <5）
+========================================================================
+```
+
+脚本只能抓到有固定字面特征的问题。例 1 里的三连排比、例 3 里没有数字支撑的「绝大多数」「较高」和万能挑战段，脚本没有报出来，靠的是 SKILL.md 里的规则让 Claude 改写。after.md 里脚本还列出了 3 句"逗号较多的流水句"，这是提示项，读得顺可以不改。
+
+## 四条硬规则
+
+其他建议可以按情况权衡，这四条没有例外：
+
+1. **禁止否定再肯定句式**：「不是…而是…」「并非…而是…」「与其说…不如说…」等。一句话里只留否定或只留肯定，多数情况下只留肯定。
+2. **正文陈述过程不用箭头**：「A → B → C」改用关联词（先…，再…，最后…）或顿号。代码块和行内代码里的箭头不受限制。
+3. **全文如非必要不用破折号「——」**：改成逗号、括号、冒号，或拆成两句。
+4. **正文和图里不用 emoji 与装饰符号**：✅ ❌ 🚀 💡 一类。
+
+## 仓库结构
 
 ```text
 zh-report-humanizer/
 ├── SKILL.md                     # 技能主文件：硬规则、语体基线、负向词表、改写手法、图表与排版
 ├── references/
-│   ├── ai-tells-zh.md           # AI 写作特征完整清单（内容层 / 语言层 / 结构层 / 图表层）
+│   ├── ai-tells-zh.md           # AI 写作特征完整清单（内容层、语言层、结构层、图表层）
 │   ├── figures-zh.md            # 图表规范与 Mermaid / PlantUML / Graphviz / matplotlib / draw.io 黑白预设
 │   └── rewrite-examples.md      # 12 组改写范例
 ├── scripts/
 │   └── check_report.py          # 自检脚本（纯标准库，Python 3.8+）
 └── examples/
-    └── bad-sample.md            # 用来试跑自检脚本的反例
+    ├── before.md                # 改写前的示例报告
+    └── after.md                 # 改写后的示例报告
 ```
-
-## 四条硬规则
-
-1. 禁止「不是…而是…」这类否定再肯定句式，一句话只留否定或只留肯定。
-2. 正文陈述过程不用箭头 `A → B → C`，改用关联词或顿号（代码块豁免）。
-3. 全文如非必要不用破折号「——」。
-4. 正文和图里不用 emoji 与装饰符号。
 
 ## 安装
 
@@ -37,15 +183,15 @@ zh-report-humanizer/
 
 ```bash
 # 个人级（所有项目可用）
-git clone https://github.com/<your-name>/zh-report-humanizer ~/.claude/skills/zh-report-humanizer
+git clone https://github.com/Red-Sa1t/zh-report-humanizer ~/.claude/skills/zh-report-humanizer
 
 # 项目级（只对当前仓库生效）
-git clone https://github.com/<your-name>/zh-report-humanizer .claude/skills/zh-report-humanizer
+git clone https://github.com/Red-Sa1t/zh-report-humanizer .claude/skills/zh-report-humanizer
 ```
 
 Windows 下个人级目录是 `%USERPROFILE%\.claude\skills\`。
 
-安装后，在对话里说「帮我去掉这篇报告的 AI 味」「报告润色」「图太花了」等，Claude 会自动加载这个技能。
+安装后，在对话里说「帮我去掉这篇报告的 AI 味」「报告润色」「写得自然点」「图太花了」等，Claude 会自动加载这个技能。
 
 ## 单独使用自检脚本
 
@@ -53,16 +199,16 @@ Windows 下个人级目录是 `%USERPROFILE%\.claude\skills\`。
 
 ```bash
 python scripts/check_report.py report.md
-python scripts/check_report.py examples/bad-sample.md
+python scripts/check_report.py examples/before.md examples/after.md
 ```
 
-输出包括四条硬规则命中、禁用词、套话、图表与画图代码检查、中英文混排和半角标点、人称混用、流水句候选、句长变异系数等。**硬规则有命中时退出码为 1**，可以放进 pre-commit 或 CI。
+检查内容包括四条硬规则、禁用词和套话、图题表题位置与正文引用、画图代码里的彩色圆角阴影、中英文混排空格、中文里的半角标点、人称混用、流水句候选、句长变异系数。硬规则有命中时退出码为 1，可以放进 pre-commit 或 CI。
 
 ## 适用范围与局限
 
-- 面向正式书面报告，不适合公众号、博客、小说等需要文风的文体。
-- 规则检查基于正则，会有误报和漏报；脚本输出是候选清单，最终以人工判断为准。
-- 这个技能的目标是把报告写清楚、写具体，**不是**用来规避 AIGC 检测或学术诚信审查。没做过的实验、没踩过的坑不要编，参考文献必须逐条核实。
+- 面向正式书面报告。公众号、博客、小说这类需要文风的文体不适用。
+- 规则检查基于正则，会有误报和漏报。脚本输出是候选清单，最终以人工判断为准。
+- 这个技能的目标是把报告写清楚、写具体。它没有规避 AIGC 检测或学术诚信审查的用途。没做过的实验、没踩过的坑不要编，参考文献必须逐条核实。
 
 ## 参考
 
@@ -71,4 +217,4 @@ python scripts/check_report.py examples/bad-sample.md
 
 ## 许可证
 
-[MIT](LICENSE)。欢迎提 Issue / PR 补充词表、误报样例和改写范例。
+[MIT](LICENSE)。欢迎提 Issue 或 PR 补充词表、误报样例和改写范例。
