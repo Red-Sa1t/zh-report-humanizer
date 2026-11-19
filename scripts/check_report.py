@@ -7,13 +7,13 @@
 
 输出以下信号:
     1. 禁用词命中（含行号与上下文）
-    2. 否定再肯定句式（硬规则一，必须为 0）
+    2. 否定与肯定对举（硬规则一，必须为 0）：先否定再肯定、先肯定再否定都算
     3. 箭头符号（硬规则二，必须为 0，代码块与行内代码除外）
     4. 破折号「——」（硬规则三，目标为 0）
     5. emoji 与装饰符号（硬规则四，目标为 0）
     6. 图表与画图代码（图题、正文引用、Mermaid / PlantUML / Graphviz / matplotlib 配置）
     7. 排版一致性：中英文混排空格、中文里的半角标点、人称混用、参考文献提醒
-    8. 正向手法提示：可能性表述密度、逗号过多的流水句（不设 0 目标）
+    8. 正向手法提示：可能性表述密度、逗号过多的流水句、数字过密的句子（不设 0 目标）
     9. 节奏与结构：句长变异系数 CV、段落长度、冒号+列表段、加粗密度
 
 硬规则优先于其他所有项：四项硬规则的命中都必须清零。
@@ -59,8 +59,11 @@ AFFIRM_REVERSE = re.compile(r"反而|反倒|恰恰")
 # 「不是…，是…」这类省略连接词的形式，单独补一条。
 BARE_PAIR = re.compile(
     r"(?:不是|并非|不只是|不仅是|不在于)[^，。；！？\n]{1,40}[，,]\s*(?:而|则|更)?是")
-# 「A 而不是 B」是允许的写法（后面没有补肯定），检查前先去掉，避免误报。
-ALLOWED_NEG = re.compile(r"而(?:不是|非)")
+# 先肯定再否定：「A 而不是 B」「来自 A，不来自 B」「是 A，不是 B」。
+# 排除「不是所有 / 不是每 / 不是很」这类数量或程度上的否定。
+AFFIRM_THEN_NEG = re.compile(
+    r"而(?:不是|非|并非|不在于|不来自|不靠)"
+    r"|[，,]\s*(?:不是|并非|而非|不在于|不来自|不靠|不取决于)(?!所有|每|很|太|一定)")
 # 删掉一半之后只剩后半个连接词，属于残留，单独提醒。
 # 只抓分句开头的「而是」；「B 模块则是 apache-2.0」这种并列对比是正常写法。
 DANGLING = re.compile(r"(?:^|[，,：:])\s*而是")
@@ -158,24 +161,46 @@ def paragraphs(body: str, keep_lists: bool = False):
 
 
 def scan_neg_affirm(raw: str):
-    """扫描否定再肯定句式，返回 (成对命中, 疑似残留)。
+    """扫描否定与肯定对举，返回 (先否定再肯定, 先肯定再否定, 疑似残留)。
 
     按 。！？； 切句，逗号不切句，这样「不是 A，而是 B」会落在同一句里。
     """
-    paired, dangling = [], []
+    neg_first, affirm_first, dangling = [], [], []
     for i, line in enumerate(strip_code_lines(raw).splitlines(), 1):
         for sent in re.split(r"[。！？；]", line):
-            sent = sent.strip()
-            if not sent:
+            s = sent.strip()
+            if not s:
                 continue
-            s = ALLOWED_NEG.sub("", sent)
             if ((NEG_START.search(s) and AFFIRM_LINK.search(s))
                     or (NEG_MEIYOU.search(s) and AFFIRM_REVERSE.search(s))
                     or BARE_PAIR.search(s)):
-                paired.append((sent[:78], i))
+                neg_first.append((s[:78], i))
+            elif AFFIRM_THEN_NEG.search(s):
+                affirm_first.append((s[:78], i))
             elif DANGLING.search(s):
-                dangling.append((sent[:78], i))
-    return paired, dangling
+                dangling.append((s[:78], i))
+    return neg_first, affirm_first, dangling
+
+
+# 跳过 ResNet-18、CIFAR-10 这类名字里的数字，以及小数点后的部分
+NUMBER = re.compile(r"(?<![A-Za-z_.\d-])\d+(?:\.\d+)?\s*%?")
+
+
+def scan_number_dense(raw: str, min_numbers: int = 4):
+    """找出一句话里数字过多的句子。全量数据应放进表格，正文只引用关键的一两个。"""
+    hits = []
+    for i, line in enumerate(strip_code_lines(raw).splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith(("#", "|", "!")):
+            continue
+        for sent in re.split(r"[。！？；]", s):
+            sent = sent.strip()
+            # 去掉编号（图 3-1、表 4-1、第 2 节）再计数
+            body = re.sub(r"[图表]\s*\d+(?:[-.]\d+)*|第\s*\d+\s*[章节]", "", sent)
+            n = len(NUMBER.findall(body))
+            if n >= min_numbers:
+                hits.append((f"[{n} 个数字] {sent[:70]}", i))
+    return hits
 
 
 def scan_line_regex(raw: str, pattern):
@@ -397,9 +422,10 @@ def check(path_str):
         total_issues += len(hits)
 
     # ---- 四条硬规则 ----
-    paired, dangling = scan_neg_affirm(raw)
-    print_hits("否定再肯定（硬规则一，目标 0）", paired, "删掉一半：只留否定，或只留肯定")
-    hard_issues += len(paired)
+    neg_first, affirm_first, dangling = scan_neg_affirm(raw)
+    print_hits("先否定再肯定（硬规则一，目标 0）", neg_first, "删掉一半：只写肯定，或只写否定")
+    print_hits("先肯定再否定（硬规则一，目标 0）", affirm_first, "删掉否定的一半，只写肯定")
+    hard_issues += len(neg_first) + len(affirm_first)
     if dangling:
         print_hits("疑似残留（只剩「而是 / 则是」，前半句已删）", dangling)
         total_issues += len(dangling)
@@ -462,6 +488,12 @@ def check(path_str):
         print(f"      L{ln:<4} {ctx}")
     if len(runons) > 5:
         print(f"      …… 另有 {len(runons) - 5} 句")
+    dense = scan_number_dense(raw)
+    print(f"    数字过密的句子 {len(dense)} 句  （一句 4 个以上数字；全量数据放进表格，正文只引用关键的一两个）")
+    for ctx, ln in dense[:5]:
+        print(f"      L{ln:<4} {ctx}")
+    if len(dense) > 5:
+        print(f"      …… 另有 {len(dense) - 5} 句")
 
     # ---- 节奏 ----
     prose = prose_only(body)
