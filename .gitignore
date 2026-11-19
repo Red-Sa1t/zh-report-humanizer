@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+# 本地测试用的报告草稿，避免误传
+*.local.md
+drafts/
