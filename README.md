@@ -1,8 +1,8 @@
 # zh-report-humanizer
 
-一个用于 [Claude Code](https://claude.com/claude-code) / Claude Agent Skills 的技能包，帮助撰写或修改**中文技术 / 学术报告**（课程作业、实验报告、分析报告、课程设计）时去掉"AI 味"，覆盖正文和图表，并附带一个可以单独运行的自检脚本。
+一个 Agent Skills 格式的技能包，可用于 [Claude Code](https://claude.com/claude-code)、Codex CLI、Gemini CLI、GitHub Copilot、Cursor 等工具，帮助撰写或修改**中文技术 / 学术报告**（课程作业、实验报告、分析报告、课程设计）时去掉"AI 味"，覆盖正文和图表，并附带一个可以单独运行的自检脚本。
 
-A Claude skill for de-AI-ifying Chinese technical/academic reports. It favors concrete details and the real troubleshooting process over stylistic tricks, and ships with a dependency-free Python self-check script.
+An Agent Skill (SKILL.md format, works with Claude Code, Codex CLI, Gemini CLI, GitHub Copilot, Cursor and others) for de-AI-ifying Chinese technical/academic reports. It favors concrete details and the real troubleshooting process over stylistic tricks, and ships with a dependency-free Python self-check script.
 
 ## 核心主张
 
@@ -158,7 +158,7 @@ PlantUML、Graphviz、matplotlib、draw.io 的黑白预设见 [references/figure
 | 提示项：数字过密的句子 | 1 | 0 |
 | **退出码** | **1** | **0** |
 
-脚本只能抓到有固定字面特征的问题。初稿里的预告句、「全面、系统、深入」三连排比、四处金句（最后一句因为同时是「不只是…更是…」对举才被报出）、越界的结论，脚本没有报出来，这些靠 SKILL.md 里的规则让 Claude 改写。
+脚本只能抓到有固定字面特征的问题。初稿里的预告句、「全面、系统、深入」三连排比、四处金句（最后一句因为同时是「不只是…更是…」对举才被报出）、越界的结论，脚本没有报出来，这些靠 SKILL.md 里的规则让 AI 改写。
 
 ## 仓库结构
 
@@ -178,25 +178,49 @@ zh-report-humanizer/
 
 ## 安装
 
-把整个目录放到 Claude Code 的 skills 目录下：
+这个技能采用通用的 Agent Skills 格式（一个文件夹加一个 `SKILL.md`），Claude Code 以外的 Codex CLI、Gemini CLI、GitHub Copilot、Cursor 等工具也能使用。
+
+### 方式一：用 skills.sh 安装（支持多种工具）
 
 ```bash
-# 个人级（所有项目可用）
+npx skills add Red-Sa1t/zh-report-humanizer
+```
+
+[skills.sh](https://www.skills.sh/docs/cli) 是 Vercel Labs 维护的通用安装工具，会询问要装到哪个工具，并放到对应的目录。需要本机装有 Node.js。
+
+### 方式二：手动放到对应工具的 skills 目录
+
+把仓库克隆到下表中对应的目录，文件夹名保持 `zh-report-humanizer`：
+
+| 工具 | 个人级（所有项目可用） | 项目级（只对当前仓库生效） |
+|---|---|---|
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
+| Codex CLI | 见 [Codex 文档](https://developers.openai.com/codex/skills) | `.agents/skills/` |
+| GitHub Copilot | `~/.copilot/skills/` | `.github/skills/` |
+| Cursor | `~/.cursor/skills/` | `.cursor/skills/` |
+| Gemini CLI | `~/.gemini/skills/` | 见 Gemini CLI 文档 |
+
+以 Claude Code 为例：
+
+```bash
+# 个人级
 git clone https://github.com/Red-Sa1t/zh-report-humanizer ~/.claude/skills/zh-report-humanizer
 
-# 项目级（只对当前仓库生效）
+# 项目级
 git clone https://github.com/Red-Sa1t/zh-report-humanizer .claude/skills/zh-report-humanizer
 ```
 
-Windows 下个人级目录是 `%USERPROFILE%\.claude\skills\`。
+Windows 下 `~` 对应 `%USERPROFILE%`。各工具的目录可能随版本调整，以它们当前的文档为准。目前只在 Claude Code 里实际测试过，其他工具的使用情况欢迎在 Issue 里反馈。
 
-安装后，在对话里说「帮我去掉这篇报告的 AI 味」「报告润色」「写得自然点」「图太花了」等，Claude 会自动加载这个技能。
+### 使用
 
-写调试、排错这类内容时，请把报错原文、命令输出和当时的判断一起交给 Claude。这个技能要求不编造没有发生过的过程。
+安装后，在对话里说「帮我去掉这篇报告的 AI 味」「报告润色」「写得自然点」「图太花了」等，工具会自动加载这个技能。自检脚本需要工具能执行 `python` 命令。
+
+写调试、排错这类内容时，请把报错原文、命令输出和当时的判断一起交给 AI。这个技能要求不编造没有发生过的过程。
 
 ## 单独使用自检脚本
 
-脚本不依赖第三方库，可以脱离 Claude 单独用：
+脚本不依赖第三方库，可以脱离 AI 工具单独用：
 
 ```bash
 python scripts/check_report.py report.md
