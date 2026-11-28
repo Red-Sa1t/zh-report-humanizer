@@ -168,7 +168,7 @@ zh-report-humanizer/
 ├── references/
 │   ├── ai-tells-zh.md           # AI 写作特征完整清单（内容层、语言层、结构层、图表层）
 │   ├── figures-zh.md            # 图表规范与 Mermaid / PlantUML / Graphviz / matplotlib / draw.io 黑白预设
-│   └── rewrite-examples.md      # 12 组改写范例
+│   └── rewrite-examples.md      # 13 组改写范例
 ├── scripts/
 │   └── check_report.py          # 自检脚本（纯标准库，Python 3.8+）
 └── examples/
